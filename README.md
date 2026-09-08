@@ -16,7 +16,7 @@ python3 -m http.server 8000   # then visit http://localhost:8000
 - Place your fleet manually (select a ship, `R` or **Rotate** to turn it, click to place; click a placed ship to pick it back up) or hit **Randomize**, then **Start game**.
 - Turns alternate, one shot each. Already-fired cells are ignored, as are clicks during the AI's turn or after the game ends.
 - Grey dot = miss, red X = hit, dark red = sunk ship. Clicking a cell you have already fired at pulses the cell and says so in the status line; it never costs a turn. First side to sink all five ships wins.
-- **Open-information variant:** every hit names the ship and its hit count (e.g. "Cruiser 2/3"), symmetrically for both sides. A dismissible notice explains this on the placement screen.
+- **Open-information variant:** every hit names the ship and its hit count (e.g. "Cruiser 2/3"), symmetrically for both sides. A permanent notice above the boards explains this before the first shot.
 
 ## AI opponent
 
