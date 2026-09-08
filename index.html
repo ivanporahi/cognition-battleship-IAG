@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Battleship</title>
+<style>
+  :root {
+    --sea: #123a5c;
+    --sea-line: #1e5480;
+    --sea-hover: #1c4f78;
+    --ship: #4a5a68;
+    --ship-edge: #6d7f8f;
+    --miss: #8fa8bb;
+    --hit: #e0533d;
+    --sunk: #6d1d12;
+    --ink: #e8f1f8;
+    --panel: #0d2438;
+    --accent: #38b6a8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 48px;
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(circle at 50% 0%, #0d2f4d, #061726 70%);
+    color: var(--ink);
+    min-height: 100vh;
+  }
+  h1 {
+    text-align: center;
+    margin: 0 0 4px;
+    font-size: 28px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  #status {
+    text-align: center;
+    min-height: 24px;
+    margin-bottom: 20px;
+    font-size: 16px;
+    color: var(--accent);
+  }
+  .layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    justify-content: center;
+    align-items: flex-start;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .board-wrap h2 {
+    font-size: 15px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: 22px repeat(10, 32px);
+    grid-template-rows: 22px repeat(10, 32px);
+    gap: 2px;
+  }
+  .label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #7ea3bf;
+  }
+  .cell {
+    background: var(--sea);
+    border: 1px solid var(--sea-line);
+    border-radius: 3px;
+    padding: 0;
+    position: relative;
+    cursor: default;
+  }
+  .board.targetable .cell:not(.miss):not(.hit):not(.sunk) { cursor: crosshair; }
+  .board.targetable .cell:not(.miss):not(.hit):not(.sunk):hover { background: var(--sea-hover); }
+  .cell.ship { background: var(--ship); border-color: var(--ship-edge); }
+  .cell.miss::after {
+    content: "";
+    position: absolute;
+    inset: 40%;
+    border-radius: 50%;
+    background: var(--miss);
+  }
+  .cell.hit {
+    background: var(--hit);
+    border-color: #ff8a72;
+  }
+  .cell.hit::after {
+    content: "\2715";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #fff;
+  }
+  .cell.sunk {
+    background: var(--sunk);
+    border-color: #a33324;
+  }
+  .cell.preview-ok { background: #2e7d63; border-color: #47b98f; }
+  .cell.preview-bad { background: #7d2e2e; border-color: #b94747; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid #1e4568;
+    border-radius: 8px;
+    padding: 16px;
+    width: 260px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .fleet { list-style: none; margin: 0 0 14px; padding: 0; }
+  .fleet li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 9px;
+    margin-bottom: 5px;
+    border: 1px solid #24537d;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .fleet li.selected { border-color: var(--accent); background: #14384f; }
+  .fleet li.placed { opacity: 0.45; cursor: default; }
+  .fleet li.sunk-entry { opacity: 0.5; text-decoration: line-through; }
+  .fleet .pips { letter-spacing: 2px; color: #7ea3bf; }
+  button {
+    font: inherit;
+    width: 100%;
+    padding: 9px;
+    margin-bottom: 8px;
+    border: 1px solid #2b6c91;
+    border-radius: 5px;
+    background: #17456a;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #1d5883; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #04212c; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #45cdbd; }
+  .hint { font-size: 12px; color: #8fb2cc; line-height: 1.5; margin: 0 0 12px; }
+  #log {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 210px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #b9d3e6;
+  }
+  #log li { border-bottom: 1px solid #163853; padding: 3px 0; }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 15, 25, 0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  #overlay.show { display: flex; }
+  #overlay .card {
+    background: var(--panel);
+    border: 1px solid #2b6c91;
+    border-radius: 10px;
+    padding: 30px 40px;
+    text-align: center;
+    width: 320px;
+  }
+  #overlay h2 { margin: 0 0 8px; letter-spacing: 2px; text-transform: uppercase; }
+  #overlay p { margin: 0 0 18px; color: #a9c7dd; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Battleship</h1>
+<p id="status" role="status" aria-live="polite">Place your fleet to begin.</p>
+
+<div class="layout">
+  <div class="board-wrap">
+    <h2>Your waters</h2>
+    <div class="board" id="playerBoard"></div>
+  </div>
+
+  <div class="panel">
+    <h2 id="panelTitle">Deploy fleet</h2>
+    <p class="hint" id="hint">Pick a ship, press <strong>R</strong> or Rotate to turn it, then click your grid to place it.</p>
+    <ul class="fleet" id="fleetList"></ul>
+    <div id="setupControls">
+      <button id="rotateBtn">Rotate (horizontal)</button>
+      <button id="randomBtn">Randomize</button>
+      <button id="resetBtn">Reset</button>
+      <button id="startBtn" class="primary" disabled>Start game</button>
+    </div>
+    <ul id="log" aria-live="polite"></ul>
+  </div>
+
+  <div class="board-wrap">
+    <h2>Enemy waters</h2>
+    <div class="board" id="aiBoard"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="card">
+    <h2 id="overlayTitle"></h2>
+    <p id="overlayText"></p>
+    <button id="againBtn" class="primary">Play again</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SIZE = 10;
+  var CELLS = SIZE * SIZE;
+  var LETTERS = "ABCDEFGHIJ";
+  var FLEET = [
+    { name: "Carrier", size: 5 },
+    { name: "Battleship", size: 4 },
+    { name: "Cruiser", size: 3 },
+    { name: "Submarine", size: 3 },
+    { name: "Destroyer", size: 2 }
+  ];
+
+  var EMPTY = 0, MISS = 1, HIT = 2;
+
+  function idx(r, c) { return r * SIZE + c; }
+  function rowOf(i) { return Math.floor(i / SIZE); }
+  function colOf(i) { return i % SIZE; }
+  function coordName(i) { return LETTERS[rowOf(i)] + (colOf(i) + 1); }
+
+  function neighbors(i) {
+    var r = rowOf(i), c = colOf(i), out = [];
+    if (r > 0) out.push(idx(r - 1, c));
+    if (r < SIZE - 1) out.push(idx(r + 1, c));
+    if (c > 0) out.push(idx(r, c - 1));
+    if (c < SIZE - 1) out.push(idx(r, c + 1));
+    return out;
+  }
+
+  function makeFleet() {
+    return FLEET.map(function (spec, i) {
+      return { id: i + 1, name: spec.name, size: spec.size, cells: [], hits: 0, sunk: false };
+    });
+  }
+
+  // A board keeps the ship layout and the shot layer separate: `grid` holds
+  // ship ids, `shots` holds what has been revealed.
+  function makeBoard() {
+    var grid = new Array(CELLS).fill(0);
+    var shots = new Array(CELLS).fill(EMPTY);
+    return { grid: grid, shots: shots, ships: makeFleet() };
+  }
+
+  function shipCells(origin, size, horizontal) {
+    var r = rowOf(origin), c = colOf(origin), cells = [];
+    for (var k = 0; k < size; k++) {
+      cells.push(horizontal ? idx(r, c + k) : idx(r + k, c));
+    }
+    return cells;
+  }
+
+  function canPlace(board, origin, size, horizontal) {
+    var r = rowOf(origin), c = colOf(origin);
+    if (horizontal && c + size > SIZE) return false;
+    if (!horizontal && r + size > SIZE) return false;
+    return shipCells(origin, size, horizontal).every(function (i) {
+      return board.grid[i] === 0;
+    });
+  }
+
+  function placeShip(board, ship, origin, horizontal) {
+    ship.cells = shipCells(origin, ship.size, horizontal);
+    ship.cells.forEach(function (i) { board.grid[i] = ship.id; });
+  }
+
+  function unplaceShip(board, ship) {
+    ship.cells.forEach(function (i) { board.grid[i] = 0; });
+    ship.cells = [];
+  }
+
+  function randomizeFleet(board) {
+    board.grid.fill(0);
+    board.ships.forEach(function (ship) {
+      ship.cells = [];
+      var placed = false;
+      while (!placed) {
+        var horizontal = Math.random() < 0.5;
+        var origin = Math.floor(Math.random() * CELLS);
+        if (canPlace(board, origin, ship.size, horizontal)) {
+          placeShip(board, ship, origin, horizontal);
+          placed = true;
+        }
+      }
+    });
+  }
+
+  function shipAt(board, i) {
+    var id = board.grid[i];
+    if (!id) return null;
+    return board.ships.find(function (s) { return s.id === id; });
+  }
+
+  function allSunk(board) {
+    return board.ships.every(function (s) { return s.sunk; });
+  }
+
+  // Resolves a shot; returns { result: "miss"|"hit", ship } or null if the
+  // cell was already fired at.
+  function fire(board, i) {
+    if (board.shots[i] !== EMPTY) return null;
+    var ship = shipAt(board, i);
+    if (!ship) {
+      board.shots[i] = MISS;
+      return { result: "miss", ship: null };
+    }
+    board.shots[i] = HIT;
+    ship.hits++;
+    if (ship.hits === ship.size) ship.sunk = true;
+    return { result: "hit", ship: ship };
+  }
+
+  // ---- AI: hunt / target ----------------------------------------------
+  var ai = {
+    targets: [],     // stack of candidate cells while chasing a wounded ship
+    hits: [],        // confirmed hits on the ship currently being chased
+    parity: 2        // hunt stride, recomputed whenever a ship sinks
+  };
+
+  function resetAI() {
+    ai.targets = [];
+    ai.hits = [];
+    ai.parity = 2;
+  }
+
+  function smallestSurvivor(board) {
+    return board.ships.reduce(function (min, s) {
+      return s.sunk ? min : Math.min(min, s.size);
+    }, Infinity);
+  }
+
+  function untried(board, i) {
+    return i >= 0 && i < CELLS && board.shots[i] === EMPTY;
+  }
+
+  function huntCell(board) {
+    var all = [], onParity = [];
+    for (var i = 0; i < CELLS; i++) {
+      if (!untried(board, i)) continue;
+      all.push(i);
+      if ((rowOf(i) + colOf(i)) % ai.parity === 0) onParity.push(i);
+    }
+    // Falling back to `all` keeps the last small ship reachable if the parity
+    // set is exhausted.
+    var pool = onParity.length ? onParity : all;
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : -1;
+  }
+
+  // With two or more hits in a line, only the cells extending that line stay
+  // worth trying.
+  function refineTargets(board) {
+    if (ai.hits.length < 2) return;
+    var sorted = ai.hits.slice().sort(function (a, b) { return a - b; });
+    var sameRow = sorted.every(function (i) { return rowOf(i) === rowOf(sorted[0]); });
+    var first = sorted[0], last = sorted[sorted.length - 1];
+    var ends = [];
+    if (sameRow) {
+      if (colOf(first) > 0) ends.push(first - 1);
+      if (colOf(last) < SIZE - 1) ends.push(last + 1);
+    } else {
+      if (rowOf(first) > 0) ends.push(first - SIZE);
+      if (rowOf(last) < SIZE - 1) ends.push(last + SIZE);
+    }
+    ai.targets = ends.filter(function (i) { return untried(board, i); });
+  }
+
+  function aiChooseShot(board) {
+    while (ai.targets.length) {
+      var candidate = ai.targets.pop();
+      if (untried(board, candidate)) return candidate;
+    }
+    return huntCell(board);
+  }
+
+  function aiRecord(board, cell, outcome) {
+    if (outcome.result === "hit") {
+      if (outcome.ship.sunk) {
+        // Drop leftover candidates that belonged to the ship just sunk and
+        // widen the hunt if the smallest survivor is now smaller.
+        ai.hits = [];
+        ai.targets = ai.targets.filter(function (i) {
+          return untried(board, i) && board.grid[i] !== outcome.ship.id;
+        });
+        var min = smallestSurvivor(board);
+        ai.parity = min === Infinity ? 2 : Math.max(2, min);
+        return;
+      }
+      ai.hits.push(cell);
+      neighbors(cell).forEach(function (n) {
+        if (untried(board, n) && ai.targets.indexOf(n) === -1) ai.targets.push(n);
+      });
+      refineTargets(board);
+    }
+  }
+
+  // ---- Game state ------------------------------------------------------
+  var state;
+
+  function newGame() {
+    state = {
+      phase: "setup",            // setup | playing | over
+      player: makeBoard(),
+      enemy: makeBoard(),
+      selectedShip: null,
+      horizontal: true,
+      busy: false,               // true while the AI is taking its turn
+      playerShots: 0,
+      playerHits: 0
+    };
+    randomizeFleet(state.enemy);
+    resetAI();
+    state.selectedShip = state.player.ships[0].id;
+  }
+
+  // ---- Rendering -------------------------------------------------------
+  var playerBoardEl = document.getElementById("playerBoard");
+  var aiBoardEl = document.getElementById("aiBoard");
+  var statusEl = document.getElementById("status");
+  var fleetListEl = document.getElementById("fleetList");
+  var logEl = document.getElementById("log");
+  var overlayEl = document.getElementById("overlay");
+  var panelTitleEl = document.getElementById("panelTitle");
+  var hintEl = document.getElementById("hint");
+  var setupControlsEl = document.getElementById("setupControls");
+  var rotateBtn = document.getElementById("rotateBtn");
+  var startBtn = document.getElementById("startBtn");
+
+  function buildGrid(container, ownBoard) {
+    container.innerHTML = "";
+    var corner = document.createElement("div");
+    corner.className = "label";
+    container.appendChild(corner);
+    for (var c = 0; c < SIZE; c++) {
+      var top = document.createElement("div");
+      top.className = "label";
+      top.textContent = c + 1;
+      container.appendChild(top);
+    }
+    for (var r = 0; r < SIZE; r++) {
+      var side = document.createElement("div");
+      side.className = "label";
+      side.textContent = LETTERS[r];
+      container.appendChild(side);
+      for (var c2 = 0; c2 < SIZE; c2++) {
+        var cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "cell";
+        cell.dataset.index = idx(r, c2);
+        cell.setAttribute("aria-label", (ownBoard ? "Your " : "Enemy ") + coordName(idx(r, c2)));
+        container.appendChild(cell);
+      }
+    }
+  }
+
+  function cellEls(container) {
+    return container.querySelectorAll(".cell");
+  }
+
+  function renderBoard(container, board, revealShips) {
+    cellEls(container).forEach(function (el) {
+      var i = Number(el.dataset.index);
+      var ship = shipAt(board, i);
+      var classes = ["cell"];
+      if (revealShips && ship) classes.push("ship");
+      if (board.shots[i] === MISS) classes.push("miss");
+      if (board.shots[i] === HIT) classes.push(ship && ship.sunk ? "sunk" : "hit");
+      el.className = classes.join(" ");
+    });
+  }
+
+  function renderFleet() {
+    fleetListEl.innerHTML = "";
+    var setup = state.phase === "setup";
+    var board = setup ? state.player : state.enemy;
+    board.ships.forEach(function (ship) {
+      var li = document.createElement("li");
+      var placed = ship.cells.length > 0;
+      if (setup) {
+        li.className = placed ? "placed" : (state.selectedShip === ship.id ? "selected" : "");
+        li.dataset.ship = ship.id;
+      } else {
+        li.className = ship.sunk ? "sunk-entry" : "";
+      }
+      var name = document.createElement("span");
+      name.textContent = ship.name;
+      var pips = document.createElement("span");
+      pips.className = "pips";
+      pips.textContent = setup ? "\u25A0".repeat(ship.size)
+        : (ship.sunk ? "sunk" : (ship.size - ship.hits) + "/" + ship.size);
+      li.appendChild(name);
+      li.appendChild(pips);
+      fleetListEl.appendChild(li);
+    });
+  }
+
+  function render() {
+    renderBoard(playerBoardEl, state.player, true);
+    renderBoard(aiBoardEl, state.enemy, false);
+    renderFleet();
+    var canFire = state.phase === "playing" && !state.busy;
+    aiBoardEl.classList.toggle("targetable", canFire);
+    setupControlsEl.style.display = state.phase === "setup" ? "block" : "none";
+    if (state.phase === "setup") {
+      panelTitleEl.textContent = "Deploy fleet";
+      hintEl.style.display = "block";
+      startBtn.disabled = !state.player.ships.every(function (s) { return s.cells.length > 0; });
+      rotateBtn.textContent = "Rotate (" + (state.horizontal ? "horizontal" : "vertical") + ")";
+    } else {
+      panelTitleEl.textContent = "Enemy fleet";
+      hintEl.style.display = "none";
+    }
+  }
+
+  function setStatus(text) { statusEl.textContent = text; }
+
+  function log(text) {
+    var li = document.createElement("li");
+    li.textContent = text;
+    logEl.insertBefore(li, logEl.firstChild);
+  }
+
+  // ---- Setup interactions ---------------------------------------------
+  function selectedShip() {
+    return state.player.ships.find(function (s) { return s.id === state.selectedShip; });
+  }
+
+  function nextUnplaced() {
+    var ship = state.player.ships.find(function (s) { return s.cells.length === 0; });
+    state.selectedShip = ship ? ship.id : null;
+  }
+
+  function clearPreview() {
+    cellEls(playerBoardEl).forEach(function (el) {
+      el.classList.remove("preview-ok", "preview-bad");
+    });
+  }
+
+  function showPreview(origin) {
+    clearPreview();
+    var ship = selectedShip();
+    if (state.phase !== "setup" || !ship || ship.cells.length) return;
+    var ok = canPlace(state.player, origin, ship.size, state.horizontal);
+    var cells = shipCells(origin, ship.size, state.horizontal).filter(function (i) {
+      return i >= 0 && i < CELLS && (state.horizontal ? rowOf(i) === rowOf(origin) : true);
+    });
+    var els = cellEls(playerBoardEl);
+    cells.forEach(function (i) {
+      if (els[i]) els[i].classList.add(ok ? "preview-ok" : "preview-bad");
+    });
+  }
+
+  playerBoardEl.addEventListener("mouseover", function (e) {
+    var cell = e.target.closest(".cell");
+    if (!cell) return;
+    showPreview(Number(cell.dataset.index));
+  });
+  playerBoardEl.addEventListener("mouseleave", clearPreview);
+
+  playerBoardEl.addEventListener("click", function (e) {
+    if (state.phase !== "setup") return;
+    var cell = e.target.closest(".cell");
+    if (!cell) return;
+    var origin = Number(cell.dataset.index);
+    var existing = shipAt(state.player, origin);
+    if (existing) {              // click a placed ship to pick it back up
+      unplaceShip(state.player, existing);
+      state.selectedShip = existing.id;
+      clearPreview();
+      render();
+      return;
+    }
+    var ship = selectedShip();
+    if (!ship || ship.cells.length) return;
+    if (!canPlace(state.player, origin, ship.size, state.horizontal)) {
+      setStatus("The " + ship.name + " doesn't fit there.");
+      return;
+    }
+    placeShip(state.player, ship, origin, state.horizontal);
+    nextUnplaced();
+    clearPreview();
+    setStatus(state.selectedShip ? "Place your " + selectedShip().name + "." : "Fleet ready \u2014 start the game.");
+    render();
+  });
+
+  fleetListEl.addEventListener("click", function (e) {
+    if (state.phase !== "setup") return;
+    var li = e.target.closest("li[data-ship]");
+    if (!li || li.classList.contains("placed")) return;
+    state.selectedShip = Number(li.dataset.ship);
+    render();
+  });
+
+  rotateBtn.addEventListener("click", function () {
+    state.horizontal = !state.horizontal;
+    render();
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (state.phase === "setup" && (e.key === "r" || e.key === "R")) {
+      state.horizontal = !state.horizontal;
+      render();
+    }
+  });
+
+  document.getElementById("randomBtn").addEventListener("click", function () {
+    randomizeFleet(state.player);
+    state.selectedShip = null;
+    setStatus("Fleet deployed \u2014 start the game.");
+    render();
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    state.player.grid.fill(0);
+    state.player.ships.forEach(function (s) { s.cells = []; });
+    state.selectedShip = state.player.ships[0].id;
+    setStatus("Place your fleet to begin.");
+    render();
+  });
+
+  startBtn.addEventListener("click", function () {
+    if (!state.player.ships.every(function (s) { return s.cells.length > 0; })) return;
+    state.phase = "playing";
+    clearPreview();
+    setStatus("Your turn \u2014 fire at the enemy grid.");
+    log("Battle stations. Fire at will.");
+    render();
+  });
+
+  // ---- Turn loop -------------------------------------------------------
+  aiBoardEl.addEventListener("click", function (e) {
+    if (state.phase !== "playing" || state.busy) return;
+    var cell = e.target.closest(".cell");
+    if (!cell) return;
+    playerTurn(Number(cell.dataset.index));
+  });
+
+  function playerTurn(target) {
+    var outcome = fire(state.enemy, target);
+    if (!outcome) return;                    // already fired here: no turn used
+    state.playerShots++;
+    if (outcome.result === "hit") state.playerHits++;
+    var where = coordName(target);
+    if (outcome.result === "miss") {
+      log("You fired at " + where + " \u2014 miss.");
+      setStatus("Miss at " + where + ".");
+    } else if (outcome.ship.sunk) {
+      log("You fired at " + where + " \u2014 sank the enemy " + outcome.ship.name + "!");
+      setStatus("You sank the enemy " + outcome.ship.name + "!");
+    } else {
+      log("You fired at " + where + " \u2014 hit.");
+      setStatus("Hit at " + where + "!");
+    }
+    render();
+
+    if (allSunk(state.enemy)) return endGame(true);
+
+    state.busy = true;
+    render();
+    setTimeout(aiTurn, 700);
+  }
+
+  function aiTurn() {
+    var target = aiChooseShot(state.player);
+    if (target < 0) { state.busy = false; render(); return; }
+    var outcome = fire(state.player, target);
+    aiRecord(state.player, target, outcome);
+    var where = coordName(target);
+    if (outcome.result === "miss") {
+      log("Enemy fired at " + where + " \u2014 miss.");
+      setStatus("Enemy missed at " + where + ". Your turn.");
+    } else if (outcome.ship.sunk) {
+      log("Enemy fired at " + where + " \u2014 sank your " + outcome.ship.name + "!");
+      setStatus("Your " + outcome.ship.name + " was sunk!");
+    } else {
+      log("Enemy fired at " + where + " \u2014 hit.");
+      setStatus("Enemy hit your fleet at " + where + ". Your turn.");
+    }
+    state.busy = false;
+    render();
+    if (allSunk(state.player)) endGame(false);
+  }
+
+  function endGame(playerWon) {
+    state.phase = "over";
+    state.busy = false;
+    render();
+    var accuracy = state.playerShots ? Math.round((state.playerHits / state.playerShots) * 100) : 0;
+    document.getElementById("overlayTitle").textContent = playerWon ? "Victory" : "Defeat";
+    document.getElementById("overlayText").textContent = playerWon
+      ? "Enemy fleet destroyed in " + state.playerShots + " shots (" + accuracy + "% accuracy)."
+      : "Your fleet was sunk after " + state.playerShots + " shots (" + accuracy + "% accuracy).";
+    overlayEl.classList.add("show");
+    setStatus(playerWon ? "You win!" : "You lose.");
+    log(playerWon ? "All enemy ships sunk. Victory!" : "All your ships sunk. Defeat.");
+  }
+
+  document.getElementById("againBtn").addEventListener("click", function () {
+    overlayEl.classList.remove("show");
+    logEl.innerHTML = "";
+    start();
+  });
+
+  function start() {
+    newGame();
+    buildGrid(playerBoardEl, true);
+    buildGrid(aiBoardEl, false);
+    setStatus("Place your fleet to begin.");
+    render();
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
