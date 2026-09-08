@@ -107,6 +107,11 @@
     background: var(--sunk);
     border-color: #a33324;
   }
+  @keyframes repeat-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(232, 241, 248, 0); }
+    50% { box-shadow: 0 0 0 3px rgba(232, 241, 248, 0.75); }
+  }
+  .cell.repeat { animation: repeat-pulse 0.45s ease-in-out 2; z-index: 1; }
   .cell.preview-ok { background: #2e7d63; border-color: #47b98f; }
   .cell.preview-bad { background: #7d2e2e; border-color: #b94747; }
   .panel {
@@ -183,6 +188,35 @@
     text-align: center;
     width: 320px;
   }
+  #notice {
+    max-width: 640px;
+    margin: 0 auto 20px;
+    padding: 12px 40px 12px 16px;
+    position: relative;
+    background: var(--panel);
+    border: 1px solid #2b6c91;
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #b9d3e6;
+  }
+  #notice[hidden] { display: none; }
+  #notice strong { color: var(--ink); }
+  #dismissNotice {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: auto;
+    margin: 0;
+    padding: 2px 8px;
+    background: none;
+    border: none;
+    color: #8fb2cc;
+    font-size: 16px;
+    line-height: 1;
+  }
+  #dismissNotice:hover { color: var(--ink); background: none; }
   #overlay h2 { margin: 0 0 8px; letter-spacing: 2px; text-transform: uppercase; }
   #overlay p { margin: 0 0 18px; color: #a9c7dd; font-size: 14px; }
 </style>
@@ -190,6 +224,11 @@
 <body>
 <h1>Battleship</h1>
 <p id="status" role="status" aria-live="polite">Place your fleet to begin.</p>
+
+<div id="notice" hidden>
+  <button id="dismissNotice" type="button" aria-label="Dismiss notice">&times;</button>
+  <strong>Open-information variant.</strong> Unlike classic Battleship, this version names the ship behind every hit and shows its hit count (e.g. &ldquo;Cruiser 2/3&rdquo;). It applies symmetrically — you see it for the enemy fleet, and the AI plays with the same information about yours.
+</div>
 
 <div class="layout">
   <div class="board-wrap">
@@ -449,6 +488,7 @@
   var panelTitleEl = document.getElementById("panelTitle");
   var hintEl = document.getElementById("hint");
   var setupControlsEl = document.getElementById("setupControls");
+  var noticeEl = document.getElementById("notice");
   var rotateBtn = document.getElementById("rotateBtn");
   var startBtn = document.getElementById("startBtn");
 
@@ -513,7 +553,7 @@
       var pips = document.createElement("span");
       pips.className = "pips";
       pips.textContent = setup ? "\u25A0".repeat(ship.size)
-        : (ship.sunk ? "sunk" : (ship.size - ship.hits) + "/" + ship.size);
+        : (ship.sunk ? "sunk" : ship.hits + "/" + ship.size);
       li.appendChild(name);
       li.appendChild(pips);
       fleetListEl.appendChild(li);
@@ -658,12 +698,26 @@
     if (state.phase !== "playing" || state.busy) return;
     var cell = e.target.closest(".cell");
     if (!cell) return;
-    playerTurn(Number(cell.dataset.index));
+    playerTurn(Number(cell.dataset.index), cell);
   });
 
-  function playerTurn(target) {
+  function flagRepeatShot(cellEl, target) {
+    setStatus("You already fired at " + coordName(target) + " \u2014 pick another cell.");
+    cellEl.classList.remove("repeat");
+    void cellEl.offsetWidth;                 // restart the pulse on repeat clicks
+    cellEl.classList.add("repeat");
+    cellEl.addEventListener("animationend", function handler() {
+      cellEl.classList.remove("repeat");
+      cellEl.removeEventListener("animationend", handler);
+    });
+  }
+
+  function playerTurn(target, cellEl) {
     var outcome = fire(state.enemy, target);
-    if (!outcome) return;                    // already fired here: no turn used
+    if (!outcome) {                          // already fired here: no turn used
+      flagRepeatShot(cellEl, target);
+      return;
+    }
     state.playerShots++;
     if (outcome.result === "hit") state.playerHits++;
     var where = coordName(target);
@@ -674,8 +728,9 @@
       log("You fired at " + where + " \u2014 sank the enemy " + outcome.ship.name + "!");
       setStatus("You sank the enemy " + outcome.ship.name + "!");
     } else {
-      log("You fired at " + where + " \u2014 hit.");
-      setStatus("Hit at " + where + "!");
+      var tally = outcome.ship.hits + "/" + outcome.ship.size;
+      log("You fired at " + where + " \u2014 hit " + outcome.ship.name + " (" + tally + ").");
+      setStatus("Hit at " + where + " \u2014 " + outcome.ship.name + " " + tally + ".");
     }
     render();
 
@@ -699,8 +754,9 @@
       log("Enemy fired at " + where + " \u2014 sank your " + outcome.ship.name + "!");
       setStatus("Your " + outcome.ship.name + " was sunk!");
     } else {
-      log("Enemy fired at " + where + " \u2014 hit.");
-      setStatus("Enemy hit your fleet at " + where + ". Your turn.");
+      var tally = outcome.ship.hits + "/" + outcome.ship.size;
+      log("Enemy fired at " + where + " \u2014 hit your " + outcome.ship.name + " (" + tally + ").");
+      setStatus("Enemy hit your " + outcome.ship.name + " (" + tally + ") at " + where + ". Your turn.");
     }
     state.busy = false;
     render();
@@ -727,8 +783,20 @@
     start();
   });
 
+  var NOTICE_KEY = "battleship.noticeDismissed";
+
+  function noticeDismissed() {
+    try { return localStorage.getItem(NOTICE_KEY) === "1"; } catch (e) { return false; }
+  }
+
+  document.getElementById("dismissNotice").addEventListener("click", function () {
+    noticeEl.hidden = true;
+    try { localStorage.setItem(NOTICE_KEY, "1"); } catch (e) { /* storage unavailable */ }
+  });
+
   function start() {
     newGame();
+    noticeEl.hidden = noticeDismissed();
     buildGrid(playerBoardEl, true);
     buildGrid(aiBoardEl, false);
     setStatus("Place your fleet to begin.");
